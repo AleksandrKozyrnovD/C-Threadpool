@@ -31,11 +31,9 @@ struct threadpool
 };
 
 struct threadpool *threadpool_create(size_t thread_count, size_t queue_size);
-
 int threadpool_destroy(struct threadpool *pool);
 
 struct threadpool_task *threadpool_add(struct threadpool *pool, void *(*func)(void*), void *arg);
-
 void *task_wait(struct threadpool_task *task);
 
 #endif
