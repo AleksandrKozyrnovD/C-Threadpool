@@ -10,7 +10,11 @@ This implementation provides a thread pool for managing concurrent task executio
 - Thread-safe operations: All operations are properly synchronized using mutexes and condition variables
 - Graceful shutdown: Proper cleanup of resources when destroying the pool
 
-  ## Usage example
+## Usage example
+1) Copy `threadpool.h` and `threadpool.c` in your project
+2) Include `threadpool.h`
+3) Compile project with `threadpool.c`
+
 ```c
 #include "threadpool.h"
 #include <stdio.h>
