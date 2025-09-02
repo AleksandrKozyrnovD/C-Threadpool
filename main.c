@@ -1,6 +1,7 @@
 #include "threadpool.h"
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 static void *simple_task(void *arg)
 {
@@ -25,6 +26,12 @@ static void *addition_task(void *arg)
     int *values = (int*)arg;
     values[2] = values[0] + values[1];
     return &values[2];
+}
+
+static void *sleep_task(void *arg)
+{
+    sleep(1);
+    return arg;
 }
 
 int main(void)
@@ -124,6 +131,39 @@ int main(void)
         if (task1) task_wait(task1);
         if (task2) task_wait(task2);
         threadpool_destroy(pool);
+    }
+
+    // Test6: Handle destroying pool while tasks are running
+    {
+        struct threadpool *pool = threadpool_create(3, 4);
+        
+        // Add tasks until queue is full
+        struct threadpool_task *task1 = threadpool_add(pool, sleep_task, NULL);
+        struct threadpool_task *task2 = threadpool_add(pool, sleep_task, NULL);
+        struct threadpool_task *task3 = threadpool_add(pool, sleep_task, NULL);
+        
+        int err = threadpool_destroy(pool);
+        if (err == 0) {
+            printf("Test6 Passed: Correctly destroyed pool while tasks running\n");
+        } else {
+            printf("Test6 Failed: Should have destroyed pool while tasks running\n");
+        }
+    }
+
+    // Test7: Handle large queue
+    {
+        struct threadpool *pool = threadpool_create(4, 100);
+        
+        for (int i = 0; i < 50; i++) {
+            threadpool_add(pool, sleep_task, NULL);
+        }
+        
+        int err = threadpool_destroy(pool);
+        if (err == 0) {
+            printf("Test7 Passed: Correctly handled large queue\n");
+        } else {
+            printf("Test7 Failed: Should have handled large queue\n");
+        }
     }
 
     return 0;

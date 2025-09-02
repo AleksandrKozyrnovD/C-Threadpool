@@ -18,7 +18,8 @@ static void task_complete(struct threadpool_task *task)
     pthread_mutex_lock(&(task->mutex));
     task->res = task->func(task->arg);
     task->completed = 1;
-    // printf("Task completed\n");
+
+    //notify waiting threads
     pthread_cond_signal(&(task->ready));
     pthread_mutex_unlock(&(task->mutex));
 }
@@ -27,13 +28,12 @@ void *task_wait(struct threadpool_task *task)
 {
     void *res;
     pthread_mutex_lock(&(task->mutex));
+    //wait for task to complete inside worker thread
     while (!task->completed)
     {
-        // printf("Task Waiting, Completed: %d\n", task->completed);
         pthread_cond_wait(&(task->ready), &(task->mutex));
     }
     res = task->res;
-    // printf("Task Waited\n");
     pthread_mutex_unlock(&(task->mutex));
     return res;
 }
@@ -46,11 +46,14 @@ static void *threadpool_thread(void *pool)
     while (1)
     {
         pthread_mutex_lock(&(tp->lock));
+
+        //if queue is empty, wait for task or pool shutdown
         while (tp->count == 0 && !tp->shutdown)
         {
             pthread_cond_wait(&(tp->notify), &(tp->lock));
         }
 
+        //if pool is shutdown and queue is empty, break, killing the thread
         if (tp->shutdown && tp->count == 0)
         {
             break;
@@ -117,6 +120,7 @@ struct threadpool *threadpool_create(size_t thread_count, size_t queue_size)
     }
     for (size_t i = 0; i < thread_count; i++)
     {
+        //create worker threads
         if ((tid = pthread_create(&(pool->threads[i]), NULL, threadpool_thread, (void*)pool)) != 0)
         {
             threadpool_destroy(pool);
@@ -148,48 +152,6 @@ static void threadpool_free(struct threadpool *pool)
     free(pool);
 }
 
-
-// int threadpool_destroy(struct threadpool *pool)
-// {
-//     int err = 0;
-    
-//     if (pool == NULL)
-//     {
-//         return -1;
-//     }
-    
-//     if (pthread_mutex_lock(&(pool->lock)) != 0)
-//     {
-//         return -1;
-//     }
-    
-//     if (pool->shutdown)
-//     {
-//         return -1;
-//     }
-    
-//     pool->shutdown = 1;
-    
-//     if ((pthread_cond_broadcast(&(pool->notify)) != 0 ||
-//         (pthread_mutex_unlock(&(pool->lock)) != 0)))
-//     {
-//         err = -1;
-//         goto out;
-//     }
-    
-//     for (size_t i = 0; i < pool->thread_count; i++)
-//     {
-//         if (pthread_join(pool->threads[i], NULL) != 0)
-//         {
-//             err = -1;
-//         }
-//     }
-    
-// out:
-//     threadpool_free(pool);
-//     return err;
-// }
-
 int threadpool_destroy(struct threadpool *pool)
 {
     if (pool == NULL) return -1;
@@ -199,6 +161,7 @@ int threadpool_destroy(struct threadpool *pool)
     pthread_cond_broadcast(&(pool->notify));
     pthread_mutex_unlock(&(pool->lock));
 
+    //wait for threads to finish, then free pool
     for (size_t i = 0; i < pool->thread_count; i++)
     {
         pthread_join(pool->threads[i], NULL);
@@ -213,7 +176,6 @@ struct threadpool_task *threadpool_add(struct threadpool *pool, void *(*func)(vo
     if (pool == NULL || func == NULL) return NULL;
 
     pthread_mutex_lock(&(pool->lock));
-    
     if (pool->count == pool->queue_size || pool->shutdown)
     {
         pthread_mutex_unlock(&(pool->lock));
@@ -227,6 +189,7 @@ struct threadpool_task *threadpool_add(struct threadpool *pool, void *(*func)(vo
     pool->tail = next_tail;
     pool->count++;
     
+    //notify worker thread
     pthread_cond_signal(&(pool->notify));
     pthread_mutex_unlock(&(pool->lock));
     return task;
