@@ -1,7 +1,6 @@
 #ifndef __THREADPOOL_H__
 #define __THREADPOOL_H__
 
-// #include <bits/pthreadtypes.h>
 #include <stdlib.h>
 #include <pthread.h>
 

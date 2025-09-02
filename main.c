@@ -1,31 +1,130 @@
 #include "threadpool.h"
 #include <stdio.h>
+#include <string.h>
 
-static void *example(void *arg)
+static void *simple_task(void *arg)
 {
-    printf("Thread %d\n", *(int *)arg);
+    int *value = (int*)arg;
+    *value *= 2;
     return NULL;
+}
+
+static void *string_task(void *arg)
+{
+    char *str = (char*)arg;
+    for (int i = 0; str[i]; i++) {
+        if (str[i] >= 'a' && str[i] <= 'z') {
+            str[i] = str[i] - 'a' + 'A';
+        }
+    }
+    return str;
+}
+
+static void *addition_task(void *arg)
+{
+    int *values = (int*)arg;
+    values[2] = values[0] + values[1];
+    return &values[2];
 }
 
 int main(void)
 {
-    struct threadpool *pool;
-    int args[4] = {1, 2, 3, 4};
-    struct threadpool_task *tasks[4];
-    
-    pool = threadpool_create(4, 4);
-    
-    for (int i = 0; i < 4; i++)
+    // Test1: Create and destroy threadpool
     {
-        tasks[i] = threadpool_add(pool, example, &args[i]);
+        struct threadpool *pool = threadpool_create(2, 10);
+        if (pool == NULL) {
+            printf("Test1 Failed: Could not create threadpool\n");
+        } else {
+            if (threadpool_destroy(pool) != 0) {
+                printf("Test1 Failed: Could not destroy threadpool\n");
+            } else {
+                printf("Test1 Passed: Threadpool created and destroyed successfully\n");
+            }
+        }
     }
 
-    for (int i = 0; i < 4; i++)
+    // Test2: Execute single task
     {
-        task_wait(tasks[i]);
+        struct threadpool *pool = threadpool_create(2, 10);
+        int value = 42;
+        struct threadpool_task *task = threadpool_add(pool, simple_task, &value);
+        
+        if (task == NULL) {
+            printf("Test2 Failed: Could not add task\n");
+            threadpool_destroy(pool);
+        } else {
+            void *result = task_wait(task);
+            if (value == 84 && result == NULL) {
+                printf("Test2 Passed: Task executed correctly\n");
+            } else {
+                printf("Test2 Failed: Expected 84 and NULL, got %d and %p\n", value, result);
+            }
+            threadpool_destroy(pool);
+        }
     }
 
-    int err = threadpool_destroy(pool);
-    printf("Destroy result: %d\n", err);
+    // Test3: Execute string conversion task
+    {
+        struct threadpool *pool = threadpool_create(2, 10);
+        char str[] = "hello";
+        struct threadpool_task *task = threadpool_add(pool, string_task, str);
+        
+        if (task == NULL) {
+            printf("Test3 Failed: Could not add task\n");
+            threadpool_destroy(pool);
+        } else {
+            char *result = (char*)task_wait(task);
+            if (strcmp(result, "HELLO") == 0) {
+                printf("Test3 Passed: String converted successfully\n");
+            } else {
+                printf("Test3 Failed: Expected 'HELLO', got '%s'\n", result);
+            }
+            threadpool_destroy(pool);
+        }
+    }
+
+    // Test4: Execute multiple tasks
+    {
+        struct threadpool *pool = threadpool_create(4, 10);
+        int data[3] = {5, 7, 0}; // [0] and [1] are inputs, [2] is output
+        struct threadpool_task *task = threadpool_add(pool, addition_task, data);
+        
+        if (task == NULL) {
+            printf("Test4 Failed: Could not add task\n");
+            threadpool_destroy(pool);
+        } else {
+            int *result = (int*)task_wait(task);
+            if (data[2] == 12 && result == &data[2]) {
+                printf("Test4 Passed: Addition task executed correctly\n");
+            } else {
+                printf("Test4 Failed: Expected 12 and %p, got %d and %p\n", 
+                       &data[2], data[2], result);
+            }
+            threadpool_destroy(pool);
+        }
+    }
+
+    // Test5: Handle full queue
+    {
+        struct threadpool *pool = threadpool_create(1, 2);
+        int values[3] = {1, 2, 3};
+        
+        // Add tasks until queue is full
+        struct threadpool_task *task1 = threadpool_add(pool, simple_task, &values[0]);
+        struct threadpool_task *task2 = threadpool_add(pool, simple_task, &values[1]);
+        struct threadpool_task *task3 = threadpool_add(pool, simple_task, &values[2]);
+        
+        if (task3 == NULL) {
+            printf("Test5 Passed: Correctly rejected task when queue full\n");
+        } else {
+            printf("Test5 Failed: Should have rejected task when queue full\n");
+            task_wait(task3);
+        }
+        
+        if (task1) task_wait(task1);
+        if (task2) task_wait(task2);
+        threadpool_destroy(pool);
+    }
+
     return 0;
 }
